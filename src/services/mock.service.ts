@@ -1,4 +1,6 @@
 import { z } from "zod";
+import { randomUUID } from "crypto";
+import { AppError } from "../utils/http";
 
 const mockSchema = z
   .object({
@@ -34,6 +36,9 @@ const mockSchema = z
       .object({
         id: z.string().optional(),
         deviceId: z.string().optional(),
+        foodName: z.string().optional(),
+        targetTemperature: z.number().optional(),
+        plannedDurationSeconds: z.number().int().positive().optional(),
         status: z.enum(["IDLE", "PREPARING", "DRYING", "PAUSED", "COMPLETED", "CANCELLED", "ERROR"]).optional(),
         startTime: z.string().optional(),
         endTime: z.string().nullable().optional(),
@@ -75,7 +80,8 @@ type MockData = {
     energyConsumption: number; timestamp: string;
   };
   cycle: null | {
-    id: string; deviceId: string; status: "IDLE" | "PREPARING" | "DRYING" | "PAUSED" | "COMPLETED" | "CANCELLED" | "ERROR";
+    id: string; deviceId: string; foodName: string; targetTemperature: number; plannedDurationSeconds: number;
+    status: "IDLE" | "PREPARING" | "DRYING" | "PAUSED" | "COMPLETED" | "CANCELLED" | "ERROR";
     startTime: string; endTime: string | null; initialWeight: number; finalWeight: number | null;
     targetHumidity: number; maximumTemperature: number; energyConsumed: number; lowHumidityReadings: number;
     durationSeconds: number; energyPerKg: number | null;
@@ -98,7 +104,8 @@ function createInitialMockData(): MockData {
       current: 4.2, voltage: 220, energyConsumption: 1.25, timestamp,
     },
     cycle: {
-      id: "mock-cycle-001", deviceId: "mock-device-001", status: "DRYING", startTime, endTime: null,
+      id: "mock-cycle-001", deviceId: "mock-device-001", foodName: "Demonstração", targetTemperature: 55,
+      plannedDurationSeconds: 3600, status: "DRYING", startTime, endTime: null,
       initialWeight: 5.1, finalWeight: null, targetHumidity: 15, maximumTemperature: 54.1,
       energyConsumed: 1.25, lowHumidityReadings: 0, durationSeconds: 1080, energyPerKg: 0.245,
     },
@@ -130,6 +137,56 @@ function mergeDefined<T extends object>(current: T, updates: object): T {
 
 export function getMockData(): MockData {
   return structuredClone(mockData);
+}
+
+const mockCycleInputSchema = z.object({
+  foodName: z.string().trim().min(1).max(100),
+  initialWeight: z.number().positive().max(100),
+  targetTemperature: z.number().min(35).max(80),
+  plannedDurationSeconds: z.number().int().positive().max(86_400),
+}).strict();
+
+export function createMockCycle(input: unknown): MockData {
+  const values = mockCycleInputSchema.parse(input);
+  if (mockData.device.status !== "ONLINE") {
+    throw new AppError(409, "A secadora mock está indisponível");
+  }
+
+  const now = new Date().toISOString();
+  const cycleId = `mock-cycle-${randomUUID()}`;
+  mockData = {
+    ...mockData,
+    cycle: {
+      id: cycleId,
+      deviceId: mockData.device.id,
+      foodName: values.foodName,
+      targetTemperature: values.targetTemperature,
+      plannedDurationSeconds: values.plannedDurationSeconds,
+      status: "DRYING",
+      startTime: now,
+      endTime: null,
+      initialWeight: values.initialWeight,
+      finalWeight: null,
+      targetHumidity: 15,
+      maximumTemperature: values.targetTemperature,
+      energyConsumed: 0,
+      lowHumidityReadings: 0,
+      durationSeconds: 0,
+      energyPerKg: null,
+    },
+    telemetry: {
+      ...mockData.telemetry,
+      cycleId,
+      temperature: values.targetTemperature,
+      weight: values.initialWeight,
+      motorOn: true,
+      heaterOn: true,
+      fanOn: true,
+      timestamp: now,
+    },
+  };
+  publishMockData();
+  return getMockData();
 }
 
 export function updateMockData(input: unknown): MockData {

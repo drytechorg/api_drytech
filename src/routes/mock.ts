@@ -1,10 +1,11 @@
 import { Router } from "express";
 import { authenticateAdmin } from "../middlewares/auth";
-import { getMockData, resetMockData, subscribeMockData, updateMockData } from "../services/mock.service";
+import { createMockCycle, getMockData, resetMockData, subscribeMockData, updateMockData } from "../services/mock.service";
 
 export const mockRouter = Router();
 
 mockRouter.get("/data", (_req, res) => res.json(getMockData()));
+mockRouter.post("/cycle", authenticateAdmin, (req, res) => res.status(201).json(createMockCycle(req.body)));
 mockRouter.get("/events", (req, res) => {
   res.status(200);
   res.set({ "Content-Type": "text/event-stream", "Cache-Control": "no-cache", Connection: "keep-alive" });
