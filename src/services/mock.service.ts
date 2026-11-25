@@ -244,6 +244,29 @@ export function updateMockCycle(input: unknown): MockData {
   return getMockData();
 }
 
+export function deleteMockCycle(cycleId: string): MockData {
+  const current = mockData.cycle;
+  if (!current || current.id !== cycleId) {
+    throw new AppError(404, "Ciclo não encontrado");
+  }
+
+  const timestamp = new Date().toISOString();
+  mockData = {
+    ...mockData,
+    cycle: null,
+    telemetry: {
+      ...mockData.telemetry,
+      cycleId: null,
+      motorOn: false,
+      heaterOn: false,
+      fanOn: false,
+      timestamp,
+    },
+  };
+  publishMockData();
+  return getMockData();
+}
+
 export function updateMockData(input: unknown): MockData {
   const patch = mockSchema.parse(input);
   mockData = {
