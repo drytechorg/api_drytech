@@ -136,7 +136,14 @@ function mergeDefined<T extends object>(current: T, updates: object): T {
 }
 
 export function getMockData(): MockData {
-  return structuredClone(mockData);
+  const snapshot = structuredClone(mockData);
+  if (snapshot.cycle?.status === "DRYING") {
+    const elapsed = Math.floor(
+      (Date.now() - new Date(snapshot.cycle.startTime).getTime()) / 1000,
+    );
+    snapshot.cycle.durationSeconds = Math.max(0, elapsed);
+  }
+  return snapshot;
 }
 
 const mockCycleInputSchema = z.object({
@@ -145,6 +152,14 @@ const mockCycleInputSchema = z.object({
   targetTemperature: z.number().min(35).max(80),
   plannedDurationSeconds: z.number().int().positive().max(86_400),
 }).strict();
+
+const mockCycleUpdateSchema = z.object({
+  foodName: z.string().trim().min(1).max(100).optional(),
+  initialWeight: z.number().positive().max(100).optional(),
+  targetTemperature: z.number().min(35).max(80).optional(),
+  plannedDurationSeconds: z.number().int().positive().max(86_400).optional(),
+  status: z.enum(["PREPARING", "DRYING", "PAUSED", "COMPLETED", "CANCELLED", "ERROR"]).optional(),
+}).strict().refine((patch) => Object.keys(patch).length > 0, "Informe ao menos um campo para atualizar");
 
 export function createMockCycle(input: unknown): MockData {
   const values = mockCycleInputSchema.parse(input);
@@ -183,6 +198,46 @@ export function createMockCycle(input: unknown): MockData {
       heaterOn: true,
       fanOn: true,
       timestamp: now,
+    },
+  };
+  publishMockData();
+  return getMockData();
+}
+
+export function updateMockCycle(input: unknown): MockData {
+  const patch = mockCycleUpdateSchema.parse(input);
+  const current = mockData.cycle;
+  if (!current) throw new AppError(404, "Não há ciclo mock para editar");
+
+  const now = new Date();
+  const nowIso = now.toISOString();
+  const currentElapsed = current.status === "PAUSED"
+    ? current.durationSeconds
+    : Math.max(0, Math.floor((now.getTime() - new Date(current.startTime).getTime()) / 1000));
+  const cyclePatch: Record<string, unknown> = { ...patch };
+
+  if (patch.targetTemperature !== undefined) {
+    cyclePatch.maximumTemperature = patch.targetTemperature;
+  }
+  if (patch.status === "PAUSED") {
+    cyclePatch.durationSeconds = currentElapsed;
+  }
+  if (patch.status === "DRYING" && current.status === "PAUSED") {
+    cyclePatch.startTime = new Date(now.getTime() - current.durationSeconds * 1000).toISOString();
+  }
+  if (patch.status === "COMPLETED" || patch.status === "CANCELLED" || patch.status === "ERROR") {
+    cyclePatch.endTime = nowIso;
+    cyclePatch.durationSeconds = currentElapsed;
+  }
+
+  mockData = {
+    ...mockData,
+    cycle: mergeDefined(current, cyclePatch),
+    telemetry: {
+      ...mockData.telemetry,
+      ...(patch.initialWeight !== undefined && { weight: patch.initialWeight }),
+      ...(patch.targetTemperature !== undefined && { temperature: patch.targetTemperature }),
+      timestamp: nowIso,
     },
   };
   publishMockData();
