@@ -107,6 +107,18 @@ function createInitialMockData(): MockData {
 }
 
 let mockData = createInitialMockData();
+const mockSubscribers = new Set<(data: MockData) => void>();
+
+function publishMockData(): void {
+  const current = getMockData();
+  for (const subscriber of mockSubscribers) subscriber(current);
+}
+
+export function subscribeMockData(subscriber: (data: MockData) => void): () => void {
+  mockSubscribers.add(subscriber);
+  subscriber(getMockData());
+  return () => mockSubscribers.delete(subscriber);
+}
 
 function mergeDefined<T extends object>(current: T, updates: object): T {
   const result = { ...current };
@@ -131,10 +143,12 @@ export function updateMockData(input: unknown): MockData {
     }),
     ...(patch.activeAlerts && { activeAlerts: patch.activeAlerts }),
   };
+  publishMockData();
   return getMockData();
 }
 
 export function resetMockData(): MockData {
   mockData = createInitialMockData();
+  publishMockData();
   return getMockData();
 }

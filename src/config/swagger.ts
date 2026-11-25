@@ -12,7 +12,7 @@ export const swaggerSpec = swaggerJSDoc({
     openapi: "3.0.3",
     info: { title: "DryTech IoT API", version: "1.0.0", description: "API REST para gestão de secadoras IoT, ciclos, telemetria e alertas." },
     servers: [{ url: "/", description: "Servidor atual" }],
-    tags: ["Health", "IoT", "Dispositivos", "Telemetria", "Alertas", "Ciclos", "Mock"].map((name) => ({ name })),
+    tags: ["Health", "Autenticação", "IoT", "Dispositivos", "Telemetria", "Alertas", "Ciclos", "Mock"].map((name) => ({ name })),
     components: {
       securitySchemes: {
         bearerAuth: { type: "http", scheme: "bearer", bearerFormat: "JWT" },
@@ -24,6 +24,8 @@ export const swaggerSpec = swaggerJSDoc({
       },
       schemas: {
         Error: { type: "object", required: ["error"], properties: { error: { type: "string" }, details: { type: "object" } } },
+        LoginInput: { type: "object", required: ["username", "password"], properties: { username: { type: "string" }, password: { type: "string", format: "password" } } },
+        LoginResult: { type: "object", required: ["token", "tokenType", "expiresIn"], properties: { token: { type: "string" }, tokenType: { type: "string", example: "Bearer" }, expiresIn: { type: "integer", example: 28800 } } },
         TelemetryInput: { type: "object", required: ["temperature", "humidity", "weight", "doorOpen", "motorOn", "heaterOn", "fanOn", "current", "voltage", "energyConsumption", "timestamp"], properties: {
           temperature: { type: "number", minimum: -40, maximum: 150 }, humidity: { type: "number", minimum: 0, maximum: 100 }, weight: { type: "number", minimum: 0, maximum: 100 }, doorOpen: { type: "boolean" }, motorOn: { type: "boolean" }, heaterOn: { type: "boolean" }, fanOn: { type: "boolean" }, current: { type: "number", minimum: 0, maximum: 100 }, voltage: { type: "number", minimum: 0, maximum: 500 }, energyConsumption: { type: "number", minimum: 0, maximum: 10000 }, cycleId: { type: "string" }, timestamp: { type: "string", format: "date-time" },
         } },
@@ -50,11 +52,14 @@ export const swaggerSpec = swaggerJSDoc({
     },
     paths: {
       "/health": { get: { tags: ["Health"], summary: "Verifica disponibilidade", responses: { "200": ok("API disponível", { type: "object", properties: { status: { type: "string", example: "ok" } } }) } } },
+      "/api/auth/login": { post: { tags: ["Autenticação"], summary: "Faz login administrativo e emite JWT válido por 8 horas", requestBody: { required: true, content: { "application/json": { schema: schema("LoginInput") } } }, responses: { "200": ok("Token JWT emitido", schema("LoginResult")), "400": response("BadRequest"), "401": response("Unauthorized"), "503": ok("Credenciais administrativas não configuradas", schema("Error")) } } },
+      "/api/auth/verify": { get: { tags: ["Autenticação"], summary: "Valida o JWT administrativo atual", security: admin, responses: { "200": ok("Token válido", { type: "object", properties: { authenticated: { type: "boolean", example: true } } }), "401": response("Unauthorized") } } },
       "/api/mock/data": {
         get: { tags: ["Mock"], summary: "Obtém os dados de demonstração usados pelo app", description: "Disponível em desenvolvimento; os dados ficam em memória e voltam ao exemplo inicial ao reiniciar a API.", responses: { "200": ok("Estado mock atual", schema("MockData")) } },
-        patch: { tags: ["Mock"], summary: "Altera os dados de demonstração", description: "Atualiza apenas os campos enviados. Objetos internos são mesclados para facilitar ajustes pontuais na apresentação.", requestBody: { required: true, content: { "application/json": { schema: schema("MockDataPatch") } } }, responses: { "200": ok("Estado mock atualizado", schema("MockData")), "400": response("BadRequest") } },
+        patch: { tags: ["Mock"], summary: "Altera os dados de demonstração", description: "Atualiza apenas os campos enviados. Objetos internos são mesclados para facilitar ajustes pontuais na apresentação.", security: admin, requestBody: { required: true, content: { "application/json": { schema: schema("MockDataPatch") } } }, responses: { "200": ok("Estado mock atualizado", schema("MockData")), "400": response("BadRequest"), "401": response("Unauthorized") } },
       },
-      "/api/mock/reset": { post: { tags: ["Mock"], summary: "Restaura os dados de demonstração iniciais", responses: { "200": ok("Dados de exemplo restaurados", schema("MockData")) } } },
+      "/api/mock/events": { get: { tags: ["Mock"], summary: "Abre stream de eventos em tempo real", description: "Server-Sent Events. Envia o estado inicial e cada alteração do mock no evento mock-data.", responses: { "200": { description: "Stream de eventos text/event-stream", content: { "text/event-stream": { schema: { type: "string" } } } } } } },
+      "/api/mock/reset": { post: { tags: ["Mock"], summary: "Restaura os dados de demonstração iniciais", security: admin, responses: { "200": ok("Dados de exemplo restaurados", schema("MockData")), "401": response("Unauthorized") } } },
       "/api/iot/devices/{deviceId}/telemetry": { post: { tags: ["IoT"], summary: "Envia telemetria e recebe comandos de segurança", security: device, parameters: [param("DeviceId")], requestBody: { required: true, content: { "application/json": { schema: schema("TelemetryInput") } } }, responses: { "200": ok("Telemetria processada", schema("TelemetryResult")), "400": response("BadRequest"), "401": response("Unauthorized"), "404": response("NotFound") } } },
       "/api/iot/devices/{deviceId}/heartbeat": { post: { tags: ["IoT"], summary: "Registra heartbeat", security: device, parameters: [param("DeviceId")], responses: { "200": ok("Heartbeat registrado", { type: "object", properties: { success: { type: "boolean" }, nextTelemetryIn: { type: "number" } } }), "401": response("Unauthorized") } } },
       "/api/iot/devices/{deviceId}/status": { get: { tags: ["IoT"], summary: "Consulta estado do dispositivo", security: device, parameters: [param("DeviceId")], responses: { "200": ok("Dispositivo, telemetria mais recente e ciclo ativo", { type: "object", properties: { device: schema("Device"), telemetry: { allOf: [schema("Telemetry")], nullable: true }, cycle: { allOf: [schema("Cycle")], nullable: true } } }), "401": response("Unauthorized"), "404": response("NotFound") } } },
