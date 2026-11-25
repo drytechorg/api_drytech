@@ -27,14 +27,4 @@ export const login = asyncHandler(async (req: Request, res: Response) => {
   res.json({ token, tokenType: "Bearer", expiresIn: 28800 });
 });
 
-export const mockLogin = asyncHandler(async (_req: Request, res: Response) => {
-  if (!env.mockMode) throw new AppError(404, "Mock authentication is disabled");
-
-  const token = jwt.sign(
-    { role: "mock-user", scope: "mock:cycle:write" },
-    env.jwtSecret,
-    { subject: "mock-user", expiresIn: "8h" },
-  );
-  res.json({ token, tokenType: "Bearer", expiresIn: 28800 });
-});
 

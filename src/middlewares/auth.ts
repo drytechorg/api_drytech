@@ -49,26 +49,3 @@ export function authenticateAdmin(
   }
 }
 
-export function authenticateMockUser(
-  req: Request,
-  _res: Response,
-  next: NextFunction,
-) {
-  try {
-    if (!env.mockMode) throw new AppError(404, "Mock mode is disabled");
-    const header = req.header("authorization");
-    if (!header?.startsWith("Bearer "))
-      throw new AppError(401, "Mock token required");
-    const payload = jwt.verify(header.slice(7), env.jwtSecret);
-    if (
-      typeof payload !== "object" ||
-      payload.role !== "mock-user" ||
-      payload.scope !== "mock:cycle:write"
-    ) {
-      throw new AppError(403, "Token does not allow mock cycle updates");
-    }
-    next();
-  } catch {
-    next(new AppError(401, "Invalid mock token"));
-  }
-}
