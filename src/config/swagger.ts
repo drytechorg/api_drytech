@@ -12,7 +12,7 @@ export const swaggerSpec = swaggerJSDoc({
     openapi: "3.0.3",
     info: { title: "DryTech IoT API", version: "1.0.0", description: "API REST para gestão de secadoras IoT, ciclos, telemetria e alertas." },
     servers: [{ url: "/", description: "Servidor atual" }],
-    tags: ["Health", "IoT", "Dispositivos", "Telemetria", "Alertas", "Ciclos"].map((name) => ({ name })),
+    tags: ["Health", "IoT", "Dispositivos", "Telemetria", "Alertas", "Ciclos", "Mock"].map((name) => ({ name })),
     components: {
       securitySchemes: {
         bearerAuth: { type: "http", scheme: "bearer", bearerFormat: "JWT" },
@@ -36,6 +36,13 @@ export const swaggerSpec = swaggerJSDoc({
         Cycle: { type: "object", properties: { id: { type: "string" }, deviceId: { type: "string" }, status: schema("CycleStatus"), startTime: { type: "string", format: "date-time" }, endTime: { type: "string", format: "date-time", nullable: true }, initialWeight: { type: "number" }, finalWeight: { type: "number", nullable: true }, targetHumidity: { type: "number" }, maximumTemperature: { type: "number" }, energyConsumed: { type: "number" }, lowHumidityReadings: { type: "integer" }, createdAt: { type: "string", format: "date-time" }, updatedAt: { type: "string", format: "date-time" } } },
         Alert: { type: "object", properties: { id: { type: "string" }, deviceId: { type: "string" }, cycleId: { type: "string", nullable: true }, type: { type: "string", enum: ["HIGH_TEMPERATURE", "LOW_TEMPERATURE", "HIGH_HUMIDITY", "DOOR_OPEN", "OVERCURRENT", "OVERWEIGHT", "SENSOR_FAILURE", "COMMUNICATION_FAILURE", "ABNORMAL_ENERGY", "DRYING_COMPLETE"] }, severity: { type: "string", enum: ["INFO", "WARNING", "CRITICAL"] }, message: { type: "string" }, value: { type: "number", nullable: true }, acknowledged: { type: "boolean" }, createdAt: { type: "string", format: "date-time" } } },
         Dashboard: { type: "object", properties: { device: { type: "object" }, telemetry: { allOf: [schema("Telemetry")], nullable: true }, cycle: { allOf: [schema("Cycle")], nullable: true, description: "Também inclui durationSeconds e energyPerKg." }, activeAlerts: { type: "array", items: schema("Alert") } } },
+        MockData: { type: "object", properties: { device: schema("Device"), telemetry: schema("Telemetry"), cycle: { allOf: [schema("Cycle")], nullable: true }, activeAlerts: { type: "array", items: schema("Alert") } } },
+        MockDataPatch: { type: "object", description: "Todos os campos são opcionais. Objetos internos são mesclados com o estado atual; activeAlerts substitui a lista atual.", properties: {
+          device: { type: "object", properties: { id: { type: "string" }, name: { type: "string" }, status: { type: "string", enum: ["ONLINE", "OFFLINE", "MAINTENANCE", "ERROR"] }, lastSeen: { type: "string", nullable: true } } },
+          telemetry: { type: "object", properties: { temperature: { type: "number" }, humidity: { type: "number" }, weight: { type: "number" }, doorOpen: { type: "boolean" }, motorOn: { type: "boolean" }, heaterOn: { type: "boolean" }, fanOn: { type: "boolean" }, current: { type: "number" }, voltage: { type: "number" }, energyConsumption: { type: "number" }, timestamp: { type: "string", format: "date-time" } } },
+          cycle: { allOf: [schema("Cycle")], nullable: true },
+          activeAlerts: { type: "array", items: schema("Alert") },
+        } },
       },
       responses: {
         BadRequest: ok("Payload inválido", schema("Error")), Unauthorized: ok("Credenciais ausentes ou inválidas", schema("Error")), NotFound: ok("Recurso não encontrado", schema("Error")), Conflict: ok("Transição de ciclo inválida", schema("Error")),
@@ -43,6 +50,11 @@ export const swaggerSpec = swaggerJSDoc({
     },
     paths: {
       "/health": { get: { tags: ["Health"], summary: "Verifica disponibilidade", responses: { "200": ok("API disponível", { type: "object", properties: { status: { type: "string", example: "ok" } } }) } } },
+      "/api/mock/data": {
+        get: { tags: ["Mock"], summary: "Obtém os dados de demonstração usados pelo app", description: "Disponível em desenvolvimento; os dados ficam em memória e voltam ao exemplo inicial ao reiniciar a API.", responses: { "200": ok("Estado mock atual", schema("MockData")) } },
+        patch: { tags: ["Mock"], summary: "Altera os dados de demonstração", description: "Atualiza apenas os campos enviados. Objetos internos são mesclados para facilitar ajustes pontuais na apresentação.", requestBody: { required: true, content: { "application/json": { schema: schema("MockDataPatch") } } }, responses: { "200": ok("Estado mock atualizado", schema("MockData")), "400": response("BadRequest") } },
+      },
+      "/api/mock/reset": { post: { tags: ["Mock"], summary: "Restaura os dados de demonstração iniciais", responses: { "200": ok("Dados de exemplo restaurados", schema("MockData")) } } },
       "/api/iot/devices/{deviceId}/telemetry": { post: { tags: ["IoT"], summary: "Envia telemetria e recebe comandos de segurança", security: device, parameters: [param("DeviceId")], requestBody: { required: true, content: { "application/json": { schema: schema("TelemetryInput") } } }, responses: { "200": ok("Telemetria processada", schema("TelemetryResult")), "400": response("BadRequest"), "401": response("Unauthorized"), "404": response("NotFound") } } },
       "/api/iot/devices/{deviceId}/heartbeat": { post: { tags: ["IoT"], summary: "Registra heartbeat", security: device, parameters: [param("DeviceId")], responses: { "200": ok("Heartbeat registrado", { type: "object", properties: { success: { type: "boolean" }, nextTelemetryIn: { type: "number" } } }), "401": response("Unauthorized") } } },
       "/api/iot/devices/{deviceId}/status": { get: { tags: ["IoT"], summary: "Consulta estado do dispositivo", security: device, parameters: [param("DeviceId")], responses: { "200": ok("Dispositivo, telemetria mais recente e ciclo ativo", { type: "object", properties: { device: schema("Device"), telemetry: { allOf: [schema("Telemetry")], nullable: true }, cycle: { allOf: [schema("Cycle")], nullable: true } } }), "401": response("Unauthorized"), "404": response("NotFound") } } },
@@ -57,7 +69,7 @@ export const swaggerSpec = swaggerJSDoc({
       "/api/devices/{deviceId}/telemetry": { get: { tags: ["Telemetria"], summary: "Lista histórico de telemetria", security: admin, parameters: [param("DeviceId"), { name: "limit", in: "query", description: "Padrão 100; máximo efetivo 500.", schema: { type: "integer", default: 100 } }], responses: { "200": ok("Leituras mais recentes primeiro", { type: "array", items: schema("Telemetry") }), "401": response("Unauthorized") } } },
       "/api/devices/{deviceId}/telemetry/latest": { get: { tags: ["Telemetria"], summary: "Consulta telemetria mais recente", security: admin, parameters: [param("DeviceId")], responses: { "200": ok("Leitura mais recente ou null", { allOf: [schema("Telemetry")], nullable: true }), "401": response("Unauthorized") } } },
       "/api/devices/{deviceId}/alerts": { get: { tags: ["Alertas"], summary: "Lista alertas do dispositivo", security: admin, parameters: [param("DeviceId"), { name: "active", in: "query", description: "true filtra alertas não reconhecidos.", schema: { type: "boolean" } }], responses: { "200": ok("Alertas mais recentes primeiro", { type: "array", items: schema("Alert") }), "401": response("Unauthorized") } } },
-      "/api/devices/{deviceId}/dashboard": { get: { tags: ["Dispositivos"], summary: "Obtém resumo operacional do dispositivo", security: admin, parameters: [param("DeviceId")], responses: { "200": ok("Resumo do dispositivo", schema("Dashboard")), "401": response("Unauthorized"), "404": response("NotFound") } } },
+      "/api/devices/{deviceId}/dashboard": { get: { tags: ["Dispositivos"], summary: "Obtém resumo operacional do dispositivo", description: "Com MOCK_MODE ativo, retorna o estado de demonstração editável em /api/mock/data.", security: admin, parameters: [param("DeviceId")], responses: { "200": ok("Resumo real ou estado mock", schema("Dashboard")), "401": response("Unauthorized"), "404": response("NotFound") } } },
       "/api/alerts/{id}/acknowledge": { patch: { tags: ["Alertas"], summary: "Reconhece alerta", security: admin, parameters: [param("Id")], responses: { "200": ok("Alerta reconhecido", schema("Alert")), "401": response("Unauthorized"), "404": response("NotFound") } } },
       "/api/cycles": {
         get: { tags: ["Ciclos"], summary: "Lista ciclos", security: admin, parameters: [{ name: "deviceId", in: "query", schema: { type: "string" } }], responses: { "200": ok("Ciclos mais recentes primeiro", { type: "array", items: schema("Cycle") }), "401": response("Unauthorized") } },

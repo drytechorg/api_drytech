@@ -5,6 +5,10 @@ const num = (key: string, fallback: number) => {
   return n;
 };
 export const env = {
+  mockMode:
+    process.env.MOCK_MODE === undefined
+      ? process.env.NODE_ENV !== "production"
+      : process.env.MOCK_MODE === "true",
   port: num("PORT", 3000),
   jwtSecret: process.env.JWT_SECRET ?? "development-only-change-me",
   corsOrigin: process.env.CORS_ORIGIN ?? "*",

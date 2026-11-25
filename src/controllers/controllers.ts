@@ -11,6 +11,7 @@ import { processTelemetry } from "../services/telemetry.service";
 import { assertCycleTransition } from "../services/dryingCycle.service";
 import { createHash } from "crypto";
 import { env } from "../config/env";
+import { getMockData } from "../services/mock.service";
 export const telemetry = asyncHandler(async (req: Request, res: Response) =>
   res.json(
     await processTelemetry(
@@ -172,6 +173,8 @@ export const acknowledge = asyncHandler(async (req: Request, res: Response) =>
   ),
 );
 export const dashboard = asyncHandler(async (req: Request, res: Response) => {
+  if (env.mockMode) return res.json(getMockData());
+
   const device = await prisma.device.findUnique({
     where: { id: String(req.params.deviceId) },
     include: {
