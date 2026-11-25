@@ -108,6 +108,14 @@ function createInitialMockData(): MockData {
 
 let mockData = createInitialMockData();
 
+function mergeDefined<T extends object>(current: T, updates: object): T {
+  const result = { ...current };
+  for (const [key, value] of Object.entries(updates)) {
+    if (value !== undefined) Object.assign(result, { [key]: value });
+  }
+  return result;
+}
+
 export function getMockData(): MockData {
   return structuredClone(mockData);
 }
@@ -116,10 +124,10 @@ export function updateMockData(input: unknown): MockData {
   const patch = mockSchema.parse(input);
   mockData = {
     ...mockData,
-    ...(patch.device && { device: { ...mockData.device, ...patch.device } }),
-    ...(patch.telemetry && { telemetry: { ...mockData.telemetry, ...patch.telemetry } }),
+    ...(patch.device && { device: mergeDefined(mockData.device, patch.device) }),
+    ...(patch.telemetry && { telemetry: mergeDefined(mockData.telemetry, patch.telemetry) }),
     ...(patch.cycle !== undefined && {
-      cycle: patch.cycle === null ? null : mockData.cycle ? { ...mockData.cycle, ...patch.cycle } : null,
+      cycle: patch.cycle === null ? null : mockData.cycle ? mergeDefined(mockData.cycle, patch.cycle) : null,
     }),
     ...(patch.activeAlerts && { activeAlerts: patch.activeAlerts }),
   };
